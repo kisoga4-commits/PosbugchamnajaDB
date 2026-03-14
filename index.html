@@ -23,6 +23,10 @@
       }).catch(err => console.error('SW Error:', err));
     });
   }
+
+  // 🟢 ระบบดักจับสถานะเน็ตแบบ Real-time (ฟังก์ชันเสริม)
+  window.addEventListener('online', () => document.getElementById('network-status').style.display = 'none');
+  window.addEventListener('offline', () => document.getElementById('network-status').style.display = 'flex');
 </script>
 <head>
     <meta charset="UTF-8">
@@ -32,7 +36,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0f172a">
     
-    <title>VILLAGE POS V11.2.1</title>
+    <title>VILLAGE POS V11.2.2</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
@@ -65,6 +69,10 @@
     </style>
 </head>
 <body class="flex flex-col h-screen overflow-hidden text-slate-800 pos-active">
+
+    <div id="network-status" class="fixed top-0 left-0 right-0 bg-orange-500 text-white text-[10px] font-bold text-center py-1 z-[9999] hidden justify-center items-center gap-1">
+        ⚠️ <span>คุณกำลังใช้งานโหมด Offline (ข้อมูลทั้งหมดถูกบันทึกลงเครื่องแล้ว)</span>
+    </div>
 
     <div id="license-lock" class="fixed inset-0 bg-slate-900/95 z-[9999] flex flex-col items-center justify-center p-6 text-white hidden backdrop-blur-md overflow-y-auto">
         <div class="w-full max-w-sm bg-slate-800 p-8 rounded-[2.5rem] border border-slate-700 shadow-2xl my-auto">
@@ -112,7 +120,7 @@
                     <h1 id="display-shop-name" class="font-bold text-lg leading-none italic">ร้านค้าชุมชน</h1>
                     <span id="status-badge" class="px-2 py-0.5 rounded-full text-[8px] font-black uppercase bg-emerald-500 text-white shadow-sm">Online</span>
                 </div>
-                <p class="text-[9px] opacity-40 tracking-widest mt-1 font-black uppercase">V11.2.1 PRO (OFFLINE CORE)</p>
+                <p class="text-[9px] opacity-40 tracking-widest mt-1 font-black uppercase">V11.2.2 PRO (ULTRA OFFLINE)</p>
             </div>
         </div>
         <div class="flex gap-2">
