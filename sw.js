@@ -1,64 +1,81 @@
-const CACHE_NAME = 'vpos-v11-pro-secure-cache-v2'; // เปลี่ยนเป็น v2 เพื่อล้างของเก่าที่ค้างเอ๋อๆ ทิ้ง
+/**
+ * VILLAGE POS - Service Worker V11.2.0 (Stable Offline)
+ * ระบบจัดการแคชเน้นทำงานออฟไลน์เป็นหลัก และรองรับการ Sync อัปเดต
+ */
 
-// 🟢 1. ของสำคัญที่บังคับโหลดตั้งแต่ตอนติดตั้ง
+const CACHE_NAME = 'vpos-v11-2-0-stable'; // เปลี่ยนเลขตรงนี้ทุกครั้งที่มึงอยากให้ลูกค้ากด "ซิงค์" แล้วได้ของใหม่
+
+// 🟢 1. รายการ "เสบียง" (Assets) ที่ต้องสูบลงเครื่องให้ครบเพื่อรันแบบ Offline
 const CORE_ASSETS = [
-  './',             // สำคัญมาก! บราวเซอร์มักจะมองหา root path
+  './',
   './index.html',
   './manifest.json',
-  // ต้องยัดไฟล์ CDN ทั้งหมดลงแคชด้วย ไม่งั้นออฟไลน์แล้ว Database ไม่ทำงาน
+  // --- ไฟล์ภายนอก (CDN) ต้องระบุ URL เต็มเพื่อให้ SW สูบลงแคชได้ ---
   'https://cdn.tailwindcss.com',
   'https://unpkg.com/html5-qrcode',
   'https://unpkg.com/dexie/dist/dexie.js',
   'https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;800;900&display=swap'
 ];
 
+// 🛠️ 1. ตอนติดตั้งแอป (Install) - บังคับโหลด CORE_ASSETS ลงแคชทันที
 self.addEventListener('install', event => {
-  self.skipWaiting(); 
+  console.log('📦 SW: Installing Stable Cache...');
+  self.skipWaiting(); // บังคับให้ SW ตัวใหม่ทำงานทันที ไม่ต้องรอปิดแอป
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      console.log('🔒 Secure Cache V2 Activated');
+      // ใช้ addAll เพื่อสูบไฟล์ที่ระบุไว้ลงเครื่อง
       return cache.addAll(CORE_ASSETS);
     })
   );
 });
 
+// 🛠️ 2. ตอนเปิดใช้งาน (Activate) - ล้างแคชเก่าที่หมดอายุ
 self.addEventListener('activate', event => {
+  console.log('🚀 SW: Cache V11.2.0 Activated');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cache => {
           if (cache !== CACHE_NAME) {
-            console.log('🗑️ Clearing Old Cache:', cache);
+            console.log('🗑️ SW: Clearing Old Cache...', cache);
             return caches.delete(cache);
           }
         })
       );
     })
   );
-  self.clients.claim();
+  return self.clients.claim(); // ควบคุม Browser ทุกหน้าต่างทันที
 });
 
-// 🟢 2. อัปเกรด Fetch: โหมด "จำอัตโนมัติ (Dynamic Caching)"
+// 🛠️ 3. ตอนดึงข้อมูล (Fetch) - หัวใจของระบบ Offline
 self.addEventListener('fetch', event => {
-  // ไม่ยุ่งกับคำสั่งแบบอื่นนอกจาก GET (เช่น พวก API จ่ายเงิน)
+  // ไม่ยุ่งกับคำสั่งที่ไม่ใช่การดึงข้อมูล (GET)
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
     caches.match(event.request).then(cachedResponse => {
-      // ด่าน 1: ถ้ามีในเครื่อง เอามาใช้เลย เร็วและกันเน็ตหลุด
-      if (cachedResponse) return cachedResponse;
-      
-      // ด่าน 2: ถ้าไม่มีในเครื่อง ให้วิ่งไปโหลดจากเน็ต
-      return fetch(event.request).then(response => {
-        // ด่าน 3: โหลดมาแล้ว จับยัดลง Cache ด้วยเลย! ครั้งหน้าจะได้มีใช้
-        return caches.open(CACHE_NAME).then(cache => {
-          // คัดลอก response ไว้ลงแคช
-          cache.put(event.request, response.clone());
-          return response;
+      // 🛡️ ด่านที่ 1: ถ้ามีไฟล์ในเครื่อง (Cache) ให้ใช้จากเครื่องทันที! (เร็วและ Offline ชัวร์)
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      // 🌐 ด่านที่ 2: ถ้าไม่มีในเครื่อง (เช่น รูปที่เพิ่งโหลด) ให้ไปดึงจากเน็ต
+      return fetch(event.request).then(networkResponse => {
+        // ตรวจสอบว่า response ปกติไหม (ถ้าไม่ปกติไม่ต้องเก็บแคช)
+        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
+          return networkResponse;
+        }
+
+        // 💾 ด่านที่ 3: โหลดมาแล้ว "จำ" ลงเครื่องอัตโนมัติ (Dynamic Caching)
+        const responseToCache = networkResponse.clone();
+        caches.open(CACHE_NAME).then(cache => {
+          cache.put(event.request, responseToCache);
         });
+
+        return networkResponse;
       }).catch(() => {
-        // ด่าน 4: เน็ตหลุด แถมหาไฟล์ไม่เจอ! 
-        // ถ้าสิ่งที่พยายามโหลดคือหน้าเว็บ ให้บังคับเด้งกลับไป index.html กันหน้าขาว
+        // 🆘 ด่านที่ 4: ถ้าเน็ตหลุด + หาไฟล์ไม่เจอ (เช่น เข้าหน้า URL แปลกๆ)
+        // ให้ส่งหน้า index.html กลับไปเสมอ เพื่อป้องกันแอปค้างหน้าขาว
         if (event.request.headers.get('accept').includes('text/html')) {
           return caches.match('./index.html');
         }
