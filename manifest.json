@@ -1,8 +1,8 @@
 {
-  "id": "village-pos-v11-2-0",
-  "name": "Village POS V11.2.0 PRO",
+  "id": "village-pos-v11-2-1",
+  "name": "Village POS V11.2.1 PRO",
   "short_name": "VPOS PRO",
-  "description": "ระบบจัดการร้านค้าชุมชน รองรับการทำงานออฟไลน์ 100%",
+  "description": "ระบบจัดการร้านค้าชุมชน รองรับการทำงานออฟไลน์ 100% (เวอร์ชันเสถียรสุด)",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
