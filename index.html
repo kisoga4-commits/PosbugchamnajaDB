@@ -525,6 +525,10 @@
 
         let currentHWID = "";
         let isFullVersion = false;
+        const LICENSE_BACKUP_VERSION = 'v1';
+        const LS_LICENSE_BACKUP_KEY = 'vpos_license_backup';
+        const LICENSE_BACKUP_CACHE = 'vpos-license-backup-cache';
+        const LICENSE_BACKUP_CACHE_KEY = '/__vpos_license_backup__';
 
         // Hardening: ซ่อนส่วนประกอบของ secret และตรวจโครงสร้าง key + checksum ก่อนยืนยัน
         const _kA = [86,76,71,80,82,79].map(c => String.fromCharCode(c)).join(''); // VLGPRO
@@ -596,6 +600,106 @@
             );
         }
 
+        function parseLicenseBackup(raw) {
+            try {
+                if (!raw || typeof raw !== 'string') return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return null;
+                return parsed;
+            } catch (_error) {
+                return null;
+            }
+        }
+
+        async function buildLicenseBackupRecord(conf) {
+            if (!conf || !conf.licenseKey || !currentHWID) return null;
+            const normalizedKey = normalizeLicenseInput(conf.licenseKey);
+            if (!normalizedKey) return null;
+
+            const shopName = (conf.shopName || '').trim();
+            const payload = `${LICENSE_BACKUP_VERSION}|${normalizedKey}|${shopName}|${currentHWID}|${_mixSecret()}`;
+            const checksum = await _sha256Hex(payload);
+            return {
+                version: LICENSE_BACKUP_VERSION,
+                licenseKey: conf.licenseKey,
+                shopName,
+                checksum,
+                savedAt: new Date().toISOString()
+            };
+        }
+
+        async function writeLicenseBackup(conf) {
+            const record = await buildLicenseBackupRecord(conf);
+            if (!record) return;
+
+            const raw = JSON.stringify(record);
+            try { localStorage.setItem(LS_LICENSE_BACKUP_KEY, raw); } catch (_error) {}
+            try {
+                if ('caches' in window) {
+                    const cache = await caches.open(LICENSE_BACKUP_CACHE);
+                    await cache.put(LICENSE_BACKUP_CACHE_KEY, new Response(raw, { headers: { 'content-type': 'application/json;charset=utf-8' } }));
+                }
+            } catch (_error) {}
+        }
+
+        async function clearLicenseBackup() {
+            try { localStorage.removeItem(LS_LICENSE_BACKUP_KEY); } catch (_error) {}
+            try {
+                if ('caches' in window) {
+                    const cache = await caches.open(LICENSE_BACKUP_CACHE);
+                    await cache.delete(LICENSE_BACKUP_CACHE_KEY);
+                }
+            } catch (_error) {}
+        }
+
+        async function readLicenseBackupCandidates() {
+            const candidates = [];
+            try {
+                const lsRaw = localStorage.getItem(LS_LICENSE_BACKUP_KEY);
+                if (lsRaw) candidates.push(lsRaw);
+            } catch (_error) {}
+
+            try {
+                if ('caches' in window) {
+                    const cache = await caches.open(LICENSE_BACKUP_CACHE);
+                    const response = await cache.match(LICENSE_BACKUP_CACHE_KEY);
+                    if (response) {
+                        const cacheRaw = await response.text();
+                        if (cacheRaw) candidates.push(cacheRaw);
+                    }
+                }
+            } catch (_error) {}
+
+            return candidates;
+        }
+
+        async function recoverLicenseFromBackup(conf) {
+            if (!currentHWID || !conf || conf.licenseKey) return false;
+            const candidates = await readLicenseBackupCandidates();
+            for (const raw of candidates) {
+                const record = parseLicenseBackup(raw);
+                if (!record || record.version !== LICENSE_BACKUP_VERSION) continue;
+
+                const normalizedKey = normalizeLicenseInput(record.licenseKey);
+                if (!normalizedKey) continue;
+
+                const shopName = (record.shopName || '').trim();
+                const payload = `${LICENSE_BACKUP_VERSION}|${normalizedKey}|${shopName}|${currentHWID}|${_mixSecret()}`;
+                const expectedChecksum = await _sha256Hex(payload);
+                if (record.checksum !== expectedChecksum) continue;
+                if (conf.shopName && conf.shopName !== "ร้านค้าชุมชน" && shopName && conf.shopName !== shopName) continue;
+
+                conf.licenseKey = record.licenseKey;
+                if ((!conf.shopName || conf.shopName === "ร้านค้าชุมชน") && shopName) {
+                    conf.shopName = shopName;
+                }
+                await vdb.settings.put(conf);
+                await writeLicenseBackup(conf);
+                return true;
+            }
+            return false;
+        }
+
         async function refreshLicenseState() {
             isFullVersion = await hasValidProLicense();
             if (isFullVersion) {
@@ -632,8 +736,11 @@
                     conf = { id: 'config', shopName: "ร้านค้าชุมชน", promptpay: "", bankName: "", password: "admin", logo: "", qrMode: "offline", staticQrImg: "", licenseKey: "" };
                     await vdb.settings.put(conf);
                 }
+                await recoverLicenseFromBackup(conf);
+                conf = await vdb.settings.get('config');
 
                 await refreshLicenseState();
+                if (isFullVersion) await writeLicenseBackup(conf);
 
                 applySettingsToUI(conf);
                 await scheduleInventoryRefresh();
@@ -697,6 +804,7 @@
                 let conf = await vdb.settings.get('config');
                 conf.licenseKey = expectedKey;
                 await vdb.settings.put(conf);
+                await writeLicenseBackup(conf);
 
                 await refreshLicenseState();
                 document.getElementById('lic-key').value = '';
@@ -719,6 +827,7 @@
             conf.licenseKey = '';
             conf.qrMode = 'offline';
             await vdb.settings.put(conf);
+            await clearLicenseBackup();
 
             isFullVersion = false;
             await refreshLicenseState();
@@ -762,6 +871,8 @@
             if(document.getElementById('set-pass').value) conf.password = document.getElementById('set-pass').value;
 
             await vdb.settings.put(conf);
+            if (conf.licenseKey) await writeLicenseBackup(conf);
+            else await clearLicenseBackup();
             applySettingsToUI(conf);
             vNotify("บันทึกตั้งค่าเรียบร้อย!", "สำเร็จ", "✅");
         }
