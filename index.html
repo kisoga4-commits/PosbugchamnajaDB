@@ -4,6 +4,8 @@
 <script>
   // Silent SW update: ลงทะเบียนและเช็กอัปเดตเบื้องหลังโดยไม่รบกวนผู้ใช้
   let swRegistration = null;
+  let deferredInstallPrompt = null;
+  let installRelatedAppsChecked = false;
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js')
@@ -33,6 +35,60 @@
   };
   window.addEventListener('online', updateNetStatusUI);
   window.addEventListener('offline', updateNetStatusUI);
+
+  const isStandaloneMode = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  const isIOSDevice = () => /iphone|ipad|ipod/.test(window.navigator.userAgent.toLowerCase());
+
+  const setInstallUiVisible = (visible) => {
+      const el = document.getElementById('pwa-install-card');
+      if (!el) return;
+      el.classList.toggle('hidden', !visible);
+  };
+
+  const shouldHideInstallUi = () => {
+      if (isStandaloneMode()) return true;
+      if (localStorage.getItem('pwa-installed') === '1') return true;
+      return false;
+  };
+
+  const refreshInstallUi = async () => {
+      if (shouldHideInstallUi()) {
+          setInstallUiVisible(false);
+          return;
+      }
+      if (isIOSDevice()) {
+          setInstallUiVisible(true);
+          return;
+      }
+      if (deferredInstallPrompt) {
+          setInstallUiVisible(true);
+          return;
+      }
+      setInstallUiVisible(false);
+
+      if (!installRelatedAppsChecked && 'getInstalledRelatedApps' in navigator) {
+          installRelatedAppsChecked = true;
+          try {
+              const apps = await navigator.getInstalledRelatedApps();
+              if (Array.isArray(apps) && apps.length > 0) {
+                  localStorage.setItem('pwa-installed', '1');
+                  setInstallUiVisible(false);
+              }
+          } catch (_) {}
+      }
+  };
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      refreshInstallUi();
+  });
+
+  window.addEventListener('appinstalled', () => {
+      localStorage.setItem('pwa-installed', '1');
+      deferredInstallPrompt = null;
+      setInstallUiVisible(false);
+  });
 </script>
 <head>
     <meta charset="UTF-8">
@@ -41,6 +97,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#0f172a">
+    <link rel="apple-touch-icon" href="./icon-192.png">
 
     <title>PosThaiban V11.2.4</title>
 
@@ -73,6 +130,16 @@
     </style>
 </head>
 <body class="flex flex-col h-screen overflow-hidden text-slate-800 pos-active">
+
+    <div id="pwa-install-card" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-[9998] w-[calc(100%-2rem)] max-w-md bg-white/95 backdrop-blur border border-slate-200 shadow-xl rounded-2xl p-3">
+        <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+                <p id="pwa-install-title" class="text-xs font-black text-slate-800">ติดตั้งแอปเพื่อใช้งานสะดวกขึ้น</p>
+                <p id="pwa-install-desc" class="text-[10px] text-slate-500 font-bold truncate">ใช้งานได้ลื่นขึ้นและเปิดได้จากหน้าโฮม</p>
+            </div>
+            <button id="pwa-install-btn" class="bg-indigo-600 text-white px-3 py-2 rounded-xl text-[10px] font-black whitespace-nowrap active:scale-95">ติดตั้งแอป</button>
+        </div>
+    </div>
 
     <div id="toast-container" class="fixed top-12 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
 
@@ -1113,7 +1180,44 @@
             }
         }
 
-        window.onload = () => { initApp(); };
+        async function handleInstallButtonClick() {
+            if (isIOSDevice()) {
+                setInstallUiVisible(true);
+                return;
+            }
+            if (!deferredInstallPrompt) return;
+            try {
+                deferredInstallPrompt.prompt();
+                const choice = await deferredInstallPrompt.userChoice;
+                if (choice && choice.outcome === 'accepted') {
+                    localStorage.setItem('pwa-installed', '1');
+                    setInstallUiVisible(false);
+                }
+            } catch (_) {
+                setInstallUiVisible(false);
+            } finally {
+                deferredInstallPrompt = null;
+                refreshInstallUi();
+            }
+        }
+
+        function initPwaInstallFlow() {
+            const btn = document.getElementById('pwa-install-btn');
+            const title = document.getElementById('pwa-install-title');
+            const desc = document.getElementById('pwa-install-desc');
+            if (!btn || !title || !desc) return;
+
+            if (isIOSDevice()) {
+                title.innerText = 'ติดตั้งบน iPhone/iPad';
+                desc.innerText = 'กด Share แล้วเลือก Add to Home Screen';
+                btn.innerText = 'ดูวิธีติดตั้ง';
+            }
+
+            btn.addEventListener('click', handleInstallButtonClick);
+            refreshInstallUi();
+        }
+
+        window.onload = () => { initApp(); initPwaInstallFlow(); };
     </script>
 
     <script>
