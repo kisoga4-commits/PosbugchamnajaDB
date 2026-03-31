@@ -1047,12 +1047,19 @@
                 if(currentRange === 'custom') return sDate.toDateString() === targetDay;
                 return true;
             }).reverse().forEach(s => {
+                const paymentDisplay = getPaymentMethodDisplay(s.method);
                 sum += s.total; count++; s.items.forEach(name => { const cn = name.split(' x')[0]; hitStats[cn] = (hitStats[cn] || 0) + (parseInt(name.split(' x')[1]) || 1); });
-                logView.innerHTML += `<div class="bg-white p-4 rounded-2xl flex justify-between items-center border shadow-sm mb-2"><div class="text-[9px] font-bold"><p class="opacity-30 uppercase">${new Date(s.timestamp).toLocaleTimeString()}</p><p class="text-slate-600">${s.items.join(', ')}</p><span class="text-indigo-500">${s.method}</span></div><p class="text-lg font-black text-emerald-600 italic">฿${s.total.toLocaleString()}</p></div>`;
+                logView.innerHTML += `<div class="bg-white p-4 rounded-2xl flex justify-between items-center border shadow-sm mb-2"><div class="text-[9px] font-bold"><p class="opacity-30 uppercase">${new Date(s.timestamp).toLocaleTimeString()}</p><p class="text-slate-600">${s.items.join(', ')}</p><span class="text-indigo-500">${paymentDisplay}</span></div><p class="text-lg font-black text-emerald-600 italic">฿${s.total.toLocaleString()}</p></div>`;
             });
             Object.entries(hitStats).sort((a,b)=>b[1]-a[1]).forEach(([name, qty]) => { hitView.innerHTML += `<div class="bg-white p-4 rounded-xl border flex justify-between items-center shadow-sm mb-2"><p class="font-bold text-xs">${name}</p><p class="font-black text-indigo-600 text-lg">${qty} <span class="text-[8px] opacity-40 uppercase">ชิ้น</span></p></div>`; });
             document.getElementById('report-total').innerText = sum.toLocaleString(); document.getElementById('report-count').innerText = count.toLocaleString();
             if(isAdmin) document.getElementById('btn-clear-sales').classList.remove('hidden');
+        }
+
+        function getPaymentMethodDisplay(method) {
+            if (method === 'cash') return '💵 เงินสด';
+            if (method === 'qr') return '🔳 QR';
+            return method || '-';
         }
 
         async function setReportRange(range) {
