@@ -47,6 +47,11 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
+  const normalizedPath = url.pathname.replace(/^\//, '');
+  const matchesAppShell = APP_SHELL.some((asset) => {
+    const normalizedAsset = String(asset).replace(/^\.\//, '');
+    return normalizedAsset === normalizedPath || normalizedAsset === url.href;
+  });
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -61,7 +66,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const isStaticAsset = APP_SHELL.includes(url.href) || APP_SHELL.includes(url.pathname) || request.destination === 'script' || request.destination === 'style' || request.destination === 'font';
+  const isStaticAsset =
+    matchesAppShell ||
+    APP_SHELL.includes(url.href) ||
+    request.destination === 'script' ||
+    request.destination === 'style' ||
+    request.destination === 'font';
 
   if (isStaticAsset) {
     event.respondWith(
