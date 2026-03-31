@@ -3,7 +3,7 @@
  * ใช้การอัปเดตแบบเงียบ ไม่มี popup/force reload
  */
 
-const CACHE_NAME = 'posthaiban-shell-v11-2-6';
+const CACHE_NAME = 'posthaiban-shell-v11-2-7';
 const APP_SHELL = [
   './',
   './index.html',
@@ -22,14 +22,21 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => {})
   );
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
       keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-    ))
+    )).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
