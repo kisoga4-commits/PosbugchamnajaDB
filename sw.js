@@ -2,12 +2,13 @@
  * PosThaiban - Service Worker (Fast update + cache cleanup)
  */
 
-const CACHE_VERSION = 'v11-3-5';
+const CACHE_VERSION = 'v11-3-6';
 const CACHE_NAME = `posthaiban-shell-${CACHE_VERSION}`;
 const SHELL_CACHE_PREFIX = 'posthaiban-shell-';
 const APP_SHELL = [
   './',
   './index.html',
+  '/',
   './manifest.json',
   './icon.png',
   './icon-192.png',
@@ -72,25 +73,42 @@ self.addEventListener('fetch', (event) => {
   });
 
   if (request.mode === 'navigate') {
-    event.respondWith(
-      Promise.race([
-        fetch(request, { cache: 'no-store' }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-      ])
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('./index.html', clone));
-          return response;
-        })
-        .catch(async () => {
-          const cachedIndex = await caches.match('./index.html');
-          if (cachedIndex) return cachedIndex;
-          return new Response(
-            '<!doctype html><meta charset="utf-8"><title>Offline</title><body style="font-family:sans-serif;padding:16px">ไม่สามารถเชื่อมต่อได้ กรุณาเปิดอินเทอร์เน็ตแล้วลองอีกครั้ง</body>',
-            { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-          );
-        })
-    );
+    event.respondWith((async () => {
+      const cachedPage =
+        (await caches.match(request, { ignoreSearch: true })) ||
+        (await caches.match('./index.html')) ||
+        (await caches.match('./'));
+
+      if (cachedPage) {
+        fetch(request, { cache: 'no-store' })
+          .then((response) => {
+            if (response && response.ok) {
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, response.clone()).catch(() => {});
+                cache.put('./index.html', response.clone()).catch(() => {});
+              });
+            }
+          })
+          .catch(() => {});
+        return cachedPage;
+      }
+
+      try {
+        const networkResponse = await fetch(request, { cache: 'no-store' });
+        if (networkResponse && networkResponse.ok) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, clone).catch(() => {});
+          });
+        }
+        return networkResponse;
+      } catch (_) {
+        return new Response(
+          '<!doctype html><meta charset="utf-8"><title>Offline</title><body style="font-family:sans-serif;padding:16px">ไม่สามารถเชื่อมต่อได้ กรุณาเปิดอินเทอร์เน็ตแล้วลองอีกครั้ง</body>',
+          { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+        );
+      }
+    })());
     return;
   }
 
@@ -99,7 +117,8 @@ self.addEventListener('fetch', (event) => {
     APP_SHELL.includes(url.href) ||
     request.destination === 'script' ||
     request.destination === 'style' ||
-    request.destination === 'font';
+    request.destination === 'font' ||
+    request.destination === 'image';
 
   if (isStaticAsset) {
     event.respondWith(
@@ -115,5 +134,10 @@ self.addEventListener('fetch', (event) => {
         return cached || networkFetch;
       })
     );
+    return;
   }
+
+  event.respondWith(
+    fetch(request).catch(async () => (await caches.match(request, { ignoreSearch: true })) || Response.error())
+  );
 });

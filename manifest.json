@@ -1,9 +1,9 @@
 {
-  "id": "posthaiban-v11-3-1-stable",
-  "name": "PosThaiban V11.3.1 PRO",
+  "id": "posthaiban-v11-3-6-stable",
+  "name": "PosThaiban V11.3.6 PRO",
   "short_name": "PosThaiban",
-  "description": "ระบบจัดการร้านค้าชุมชน PosThaiban V11.3.1 สแกนต่อเนื่องไม่มีสะดุด ออฟไลน์ 100%",
-  "start_url": "./index.html",
+  "description": "ระบบจัดการร้านค้าชุมชน PosThaiban V11.3.6 สแกนต่อเนื่องไม่มีสะดุด ออฟไลน์ 100%",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0f172a",
